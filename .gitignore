@@ -1,6 +1,2 @@
-app/app/__pycache__
 .idea
 .vscode
-docker-compose.yaml
-app/uwsgi.log
-
