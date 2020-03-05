@@ -60,13 +60,13 @@ Resources:
         ZipFile: |
           import json
           import boto3
-          
+
           client = boto3.client('ecs')
           code_pipeline = boto3.client('codepipeline')
-          
-          
+
+
           def lambda_handler(event, context):
-          
+
               try:
                   job_id = event['CodePipeline.job']['id']
                   user_parameters = event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters']
@@ -75,10 +75,10 @@ Resources:
                   cluster_arn = user_params['cluster_arn']
                   service_arn = user_params['service_arn']
                   state_arn = user_params['state_arn']
-          
+
               except Exception as e:
-                  put_job_failure(job_id, 'UserParameters could not be decoded as JSON or incorrect payload.')
-                  raise Exception('UserParameters could not be decoded as JSON')
+                  put_job_failure(job_id, 'UserParameters could not be decoded as JSON or incorrect payload. ' + str(e))
+                  raise Exception('UserParameters could not be decoded as JSON. ' + str(e))
                   
               try:
                   client.update_service(
@@ -87,8 +87,8 @@ Resources:
                       desiredCount=int(user_params['desired_count'])
                   )
               except Exception as e:
-                  put_job_failure(job_id, 'Unable to scale the cluster')
-                  raise Exception('Unable to scale the cluster')
+                  put_job_failure(job_id, 'Unable to scale the cluster' + str(e))
+                  raise Exception('Unable to scale the cluster' + str(e))
                   
               try:
                 # If we are starting the tasks on the cluster, we need to sent a task to state machine to turn it off in X amount of time
@@ -96,19 +96,18 @@ Resources:
                   user_params['desired_count'] = 0;
                   event['CodePipeline.job']['id'] = ''
                   event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters'] = json.dumps(user_params)
-          
+
                   clientSF = boto3.client('stepfunctions')
                   
                   # List allrunning executions (if any) and stop them because this is a new deployment in the pipeline
-                  exectutions = clientSF.list_executions(
+                  executions = clientSF.list_executions(
                       stateMachineArn=state_arn,
                       statusFilter='RUNNING'
                   )
                   
-                  for exectution in exections:
+                  for execution in executions['executions']:
                       clientSF.stop_execution(
-                          executionArn=exectution['executionArn'],
-                          input = json.dumps(event)
+                          executionArn=execution['executionArn']
                       )                     
                   
                   # Start new timed execution
@@ -116,17 +115,17 @@ Resources:
                       stateMachineArn=state_arn,
                       input = json.dumps(event)
                   )   
-                except Exception as e:
-                  put_job_failure(job_id, 'Unable to trigger state machine')
-                  raise Exception('Unable to trigger state machine')
-          
+              except Exception as e:
+                  put_job_failure(job_id, 'Unable to trigger state machine: ' + str(e))
+                  raise Exception('Unable to trigger state machine: ' + str(e))
+
               put_job_success(job_id, 'Function ran successfully')
-          
+
           def put_job_success(job, message):
               if not job:
                   print('Skipping job action')
                   return
-          
+
               print('Putting job success')
               print(message)
               code_pipeline.put_job_success_result(jobId=job)    
@@ -135,11 +134,12 @@ Resources:
               if not job:
                   print('Skipping job action')
                   return
-          
+
               print('Putting job failure')
               print(message)
               fd = {'message': message, 'type': 'JobFailed'}
               code_pipeline.put_job_failure_result(jobId=job, failureDetails=fd)    
+ 
         
 
   StatesExecutionRole:
