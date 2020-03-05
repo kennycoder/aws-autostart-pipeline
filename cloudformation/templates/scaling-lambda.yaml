@@ -1,0 +1,199 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Lambda Scaling Function
+
+Parameters:
+  scaleToZeroTime:
+    Type: Number
+
+Resources:
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: LambdaPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action: "states:*"
+            Resource: "*"
+            Effect: Allow
+          - Action: "ec2:*"
+            Resource: "*"
+            Effect: Allow
+          - Action: "elasticloadbalancing:*"
+            Resource: "*"
+            Effect: Allow
+          - Action: "ecs:*"
+            Resource: "*"
+            Effect: Allow
+          - Action: "codepipeline:*"
+            Resource: "*"
+            Effect: Allow
+          - Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource:
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+            Effect: Allow
+    
+  ScalingLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "Scales the ECS Fargate Tasks"
+      Handler: "index.lambda_handler"
+      Runtime: "python3.7"
+      Role: !GetAtt ["LambdaRole", "Arn"]
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          
+          client = boto3.client('ecs')
+          code_pipeline = boto3.client('codepipeline')
+          
+          
+          def lambda_handler(event, context):
+          
+              try:
+                  job_id = event['CodePipeline.job']['id']
+                  user_parameters = event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters']
+                  user_params = json.loads(user_parameters)
+              
+                  cluster_arn = user_params['cluster_arn']
+                  service_arn = user_params['service_arn']
+                  state_arn = user_params['state_arn']
+          
+              except Exception as e:
+                  put_job_failure(job_id, 'UserParameters could not be decoded as JSON or incorrect payload.')
+                  raise Exception('UserParameters could not be decoded as JSON')
+                  
+              try:
+                  client.update_service(
+                      cluster = cluster_arn,
+                      service = service_arn,
+                      desiredCount=int(user_params['desired_count'])
+                  )
+              except Exception as e:
+                  put_job_failure(job_id, 'Unable to scale the cluster')
+                  raise Exception('Unable to scale the cluster')
+                  
+              try:
+                # If we are starting the tasks on the cluster, we need to sent a task to state machine to turn it off in X amount of time
+                if int(user_params['desired_count']) > 0:
+                  user_params['desired_count'] = 0;
+                  event['CodePipeline.job']['id'] = ''
+                  event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters'] = json.dumps(user_params)
+          
+                  clientSF = boto3.client('stepfunctions')
+                  
+                  # List allrunning executions (if any) and stop them because this is a new deployment in the pipeline
+                  exectutions = clientSF.list_executions(
+                      stateMachineArn=state_arn,
+                      statusFilter='RUNNING'
+                  )
+                  
+                  for exectution in exections:
+                      clientSF.stop_execution(
+                          executionArn=exectution['executionArn'],
+                          input = json.dumps(event)
+                      )                     
+                  
+                  # Start new timed execution
+                  clientSF.start_execution(
+                      stateMachineArn=state_arn,
+                      input = json.dumps(event)
+                  )   
+                except Exception as e:
+                  put_job_failure(job_id, 'Unable to trigger state machine')
+                  raise Exception('Unable to trigger state machine')
+          
+              put_job_success(job_id, 'Function ran successfully')
+          
+          def put_job_success(job, message):
+              if not job:
+                  print('Skipping job action')
+                  return
+          
+              print('Putting job success')
+              print(message)
+              code_pipeline.put_job_success_result(jobId=job)    
+              
+          def put_job_failure(job, message):
+              if not job:
+                  print('Skipping job action')
+                  return
+          
+              print('Putting job failure')
+              print(message)
+              fd = {'message': message, 'type': 'JobFailed'}
+              code_pipeline.put_job_failure_result(jobId=job, failureDetails=fd)    
+        
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+
+  MyStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "Comment": "Wait to scale Fargate back to zero",
+              "StartAt": "WaitState",
+              "States": {
+                "WaitState": {
+                  "Type": "Wait",
+                  "Seconds": ${timeout},
+                  "Next": "StopLambda"
+                },
+                "StopLambda": {
+                  "Type": "Task",
+                  "Resource": "${lambdaArn}",
+                  "End": true
+                }
+              }
+            }
+          - {lambdaArn: !GetAtt [ ScalingLambdaFunction, Arn ], timeout: !Ref scaleToZeroTime}
+      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]                  
+
+Outputs:
+  StateMachine:
+    Description: "ECS Fargate Scaling state Machine"
+    Value: !Ref MyStateMachine
+
+  ECSScalingLambdaFunction:
+    Description: "ECS Fargate Scaling lambda function"
+    Value: !Ref ScalingLambdaFunction

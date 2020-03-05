@@ -11,7 +11,7 @@ Parameters:
 
   DesiredCount:
     Type: Number
-    Default: 1
+    Default: 0
 
   TargetGroup:
     Type: String
@@ -21,13 +21,6 @@ Parameters:
 
   Subnets:
     Type: List<AWS::EC2::Subnet::Id>
-
-  DynamoDBTable:
-    Type: String
-
-  SecretsJsonARN:
-    Type: String
-
 
 Resources:
   TaskExecutionRole:
@@ -44,18 +37,6 @@ Resources:
           - 'sts:AssumeRole'
       ManagedPolicyArns:
       - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
-      Policies:
-      - PolicyName: !Sub 'EcsTaskExecutionRole-${AWS::StackName}'
-        PolicyDocument:
-          Version: 2012-10-17
-          Statement:
-          - Effect: Allow
-            Action:
-            - 'ssm:GetParameters'
-            - 'secretsmanager:GetSecretValue'
-            - 'kms:Decrypt'
-            Resource:
-            - !Ref SecretsJsonARN
 
             
   LogGroup:
@@ -100,13 +81,6 @@ Resources:
           Environment:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
-            - Name: DB_LOCAL
-              Value: "false"
-            - Name: DB_TABLE
-              Value: !Ref DynamoDBTable              
-          Secrets:
-            - Name: SECRETS_JSON
-              ValueFrom: !Ref SecretsJsonARN
           LogConfiguration:
             LogDriver: awslogs
             Options:

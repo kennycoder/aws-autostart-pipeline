@@ -3,14 +3,20 @@ AWSTemplateFormatVersion: 2010-09-09
 
 
 Description: >
-  Todo
-
+  Cloudformation template for continuous testing pipeline that starts and stop ecs fargate tasks for cost savings.
 
 Parameters:
   GitHubUser:
     Type: String
     Default: github_username
     Description: Your username on GitHub.
+
+  GitHubToken:
+    Type: String
+    Default: github_token
+    NoEcho: true
+    Description: >
+      Token for the user specified above. (https://github.com/settings/tokens)
 
   GitHubRepo:
     Type: String
@@ -22,19 +28,18 @@ Parameters:
     Default: master
     Description: The branch of the repo to continuously deploy.
     
-  GitHubToken:
-    Type: String
-    Default: github_token
-    NoEcho: true
-    Description: >
-      Token for the user specified above. (https://github.com/settings/tokens)
-
   TemplateBucket:
     Type: String
     Default: cf-templates-bucket
     Description: >
       The S3 bucket from which to fetch the templates used by this stack.
-      
+
+  scaleToZeroTime:
+    Type: Number
+    Default: 1800
+    Description: >
+      Amount of seconds to wait until the cluster's tasks scale to zero again
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterLabels:
@@ -59,22 +64,24 @@ Metadata:
         Parameters:
           - TemplateBucket
 
-
 Resources:
   Cluster:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/ecs-cluster.yaml"
-      Parameters:
-        SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
-        Subnets: !GetAtt VPC.Outputs.Subnets
-        VpcId: !GetAtt VPC.Outputs.VpcId
 
   ECR:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/ecr.yaml"
-        
+
+  ScalingLambda:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/scaling-lambda.yaml"
+      Parameters:
+        scaleToZeroTime: !Ref scaleToZeroTime
+      
   DeploymentPipeline:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -87,6 +94,8 @@ Resources:
         GitHubRepo: !Ref GitHubRepo
         GitHubBranch: !Ref GitHubBranch
         Repository: !GetAtt ECR.Outputs.Repository
+        ScalingLambdaFunction: !GetAtt ScalingLambda.Outputs.ECSScalingLambdaFunction
+        StateMachine: !GetAtt ScalingLambda.Outputs.StateMachine
 
   LoadBalancer:
     Type: AWS::CloudFormation::Stack
@@ -116,7 +125,6 @@ Resources:
         SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
         Subnets: !GetAtt VPC.Outputs.Subnets
         Repository: !GetAtt ECR.Outputs.Repository
-
 
 Outputs:
   ServiceUrl:
