@@ -68,24 +68,24 @@ Resources:
   Cluster:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/ecs-cluster.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-ecs-cluster.yaml"
 
   ECR:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/ecr.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-ecr.yaml"
 
   ScalingLambda:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/scaling-lambda.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-scaling-lambda.yaml"
       Parameters:
         scaleToZeroTime: !Ref scaleToZeroTime
       
   DeploymentPipeline:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/deployment-pipeline.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-deployment-pipeline.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
         Service: !GetAtt Service.Outputs.Service
@@ -100,7 +100,7 @@ Resources:
   LoadBalancer:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/load-balancer.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-load-balancer.yaml"
       Parameters:
         Subnets: !GetAtt VPC.Outputs.Subnets
         VpcId: !GetAtt VPC.Outputs.VpcId
@@ -108,7 +108,7 @@ Resources:
   VPC:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/vpc.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-vpc.yaml"
       Parameters:
         Name: !Ref AWS::StackName
         VpcCIDR: 10.215.0.0/16
@@ -118,7 +118,7 @@ Resources:
   Service:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/service.yaml"
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-service.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
         TargetGroup: !GetAtt LoadBalancer.Outputs.TargetGroup
