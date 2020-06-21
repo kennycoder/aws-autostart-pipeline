@@ -87,8 +87,12 @@ Resources:
                 state_arn = os.environ['state_arn']
 
                 try:
+                    job_id = event['CodePipeline.job']['id']
+                except KeyError as e:
+                    job_id = None
+                            
+                try:
                     desired_count = event['desired_count']
-                
                 except Exception as e:
                     desired_count = 1
 
@@ -100,6 +104,7 @@ Resources:
                     )
                     
                 except botocore.exceptions.ClientError as e:
+                    put_job_failure(job_id, 'Unable to scale the cluster' + str(e))
                     raise Exception('Unable to scale the cluster' + str(e))
                 
                 try:
@@ -126,7 +131,30 @@ Resources:
                     )   
                     
                 except botocore.exceptions.ClientError as e:
+                    put_job_failure(job_id, 'Unable to trigger state machine: ' + str(e))
+                    
                     raise Exception('Unable to trigger state machine: ' + str(e))
+                    
+                put_job_success(job_id, 'Cluster scaled succesfully')
+
+            def put_job_success(job, message):
+                if not job:
+                    print('Skipping job action')
+                    return
+                
+                print('Putting job success')
+                print(message)
+                code_pipeline.put_job_success_result(jobId=job)    
+              
+            def put_job_failure(job, message):
+                if not job:
+                    print('Skipping job action')
+                    return
+                
+                print('Putting job failure')
+                print(message)
+                fd = {'message': message, 'type': 'JobFailed'}
+                code_pipeline.put_job_failure_result(jobId=job, failureDetails=fd) 
         
 
   StatesExecutionRole:
