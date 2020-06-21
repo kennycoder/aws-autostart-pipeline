@@ -72,6 +72,9 @@ Resources:
 
 
 Outputs:
+  LoadBalancer:
+    Value: !Ref LoadBalancer
+
   TargetGroup:
     Value: !Ref TargetGroup
 

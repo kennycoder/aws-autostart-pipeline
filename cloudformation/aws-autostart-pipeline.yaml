@@ -81,6 +81,9 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/module-scaling-lambda.yaml"
       Parameters:
         scaleToZeroTime: !Ref scaleToZeroTime
+        Cluster: !GetAtt Cluster.Outputs.ClusterName
+        Service: !GetAtt Service.Outputs.Service
+        LoadBalancer: !GetAtt LoadBalancer.Outputs.LoadBalancer
       
   DeploymentPipeline:
     Type: AWS::CloudFormation::Stack
@@ -95,7 +98,6 @@ Resources:
         GitHubBranch: !Ref GitHubBranch
         Repository: !GetAtt ECR.Outputs.Repository
         ScalingLambdaFunction: !GetAtt ScalingLambda.Outputs.ECSScalingLambdaFunction
-        StateMachine: !GetAtt ScalingLambda.Outputs.StateMachine
 
   LoadBalancer:
     Type: AWS::CloudFormation::Stack

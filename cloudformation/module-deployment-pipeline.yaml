@@ -28,9 +28,6 @@ Parameters:
   ScalingLambdaFunction:
     Type: String
 
-  StateMachine:
-    Type: String
-
 Resources:
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -192,23 +189,6 @@ Resources:
               OutputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
-        - Name: scaleUp
-          Actions:
-          - Name: scaleUpFargateTask
-            InputArtifacts: []
-            RunOrder: 1
-            ActionTypeId:
-              Category: Invoke
-              Owner: AWS
-              Version: '1'
-              Provider: Lambda
-            OutputArtifacts: []
-            Configuration:
-              FunctionName: !Ref ScalingLambdaFunction
-              UserParameters: 
-                !Sub
-                  - '{"service_arn":"${ServiceArn}", "cluster_arn":"${ClusterArn}", "state_arn": "${StateMachineArn}", "desired_count":"1"}'
-                  - { ServiceArn: !Ref Service, ClusterArn: !Ref Cluster, StateMachineArn: !Ref StateMachine }
         - Name: Deploy
           Actions:
             - Name: Deploy
@@ -224,37 +204,19 @@ Resources:
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
-        #- Name: Approve
-        #  Actions:
-        #    - Name: Approve
-        #      ActionTypeId:
-        #        Category: Approval
-        #        Owner: AWS
-        #        Version: 1
-        #        Provider: Manual
-        #      Configuration:
-        #        CustomData: "Finalize to scale Fargate tasks to zero."
-        #      InputArtifacts: []
-        #      OutputArtifacts: []
-        #      RunOrder: 1
-        #- Name: scaleDown
-        #  Actions:
-        #  - Name: scaleDownFargateTask
-        #    InputArtifacts: []
-        #    RunOrder: 1
-        #    ActionTypeId:
-        #      Category: Invoke
-        #      Owner: AWS
-        #      Version: '1'
-        #      Provider: Lambda
-        #    OutputArtifacts: []
-        #    Configuration:
-        #      FunctionName: !Ref ScalingLambdaFunction
-        #      UserParameters: 
-        #        !Sub
-        #          - '{"service_arn":"${ServiceArn}", "cluster_arn":"${ClusterArn}", "state_arn":"", "desired_count":"0"}'
-        #          - { ServiceArn: !Ref Service, ClusterArn: !Ref Cluster }
-
+        - Name: ScaleUp
+          Actions:
+          - Name: scaleUpFargateTask
+            InputArtifacts: []
+            RunOrder: 1
+            ActionTypeId:
+              Category: Invoke
+              Owner: AWS
+              Version: '1'
+              Provider: Lambda
+            OutputArtifacts: []
+            Configuration:
+              FunctionName: !Ref ScalingLambdaFunction
 
 Outputs:
   PipelineUrl:
